@@ -34,16 +34,6 @@ btn2.addEventListener("click", function(){
     }
 })
 
-btn2.addEventListener("click", function(){
-    if (tg.MainButton.isVisible) {
-        tg.MainButton.hide();
-    } else {
-        tg.MainButton.setText("You chose item #2");
-        item = "2";
-        tg.MainButton.show();
-    }
-})
-
 btn3.addEventListener("click", function(){
     if (tg.MainButton.isVisible) {
         tg.MainButton.hide();
@@ -91,7 +81,7 @@ Telegram.WebApp.onEvent("mainButtonClicked", function(){
 let usercard = document.getElementById("usercard");
 let p = document.createElement("p");
 
-p.innerText = `${tg.initDataUnsafe.user.first_name}
-${tg.initDataUnsafe.user.last_name}`;
+p.innerText = `${tg.initDataUnsafe.first_name}
+${tg.initDataUnsafe.last_name}`;
 
 usercard.appendChild(p);
