@@ -4,8 +4,17 @@ services:
     image: video-downloader-bot
     restart: unless-stopped
     env_file: .env
+    depends_on: [pot-provider]
     volumes:
       - bot-data:/data
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Generates YouTube PO tokens; without them YouTube gives server IPs 360p at best.
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }

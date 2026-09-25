@@ -40,6 +40,17 @@ if [ ! -f .env ]; then
     read -r -s -p "BOT_TOKEN from @BotFather: " token < /dev/tty; echo
     read -r -p "Allowed Telegram user IDs, comma-separated (empty = everyone): " users < /dev/tty
     sed -i "s|^BOT_TOKEN=.*|BOT_TOKEN=${token}|; s|^ALLOWED_USERS=.*|ALLOWED_USERS=${users}|" .env
+
+    echo "The cloud Bot API accepts files up to 50 MB only (a 10-minute video fits at ~480p)."
+    echo "With api_id/api_hash from https://my.telegram.org a local Bot API server lifts it to 2000 MB."
+    read -r -p "TELEGRAM_API_ID (empty = keep the 50 MB limit): " api_id < /dev/tty
+    if [ -n "$api_id" ]; then
+        read -r -s -p "TELEGRAM_API_HASH: " api_hash < /dev/tty; echo
+        sed -i "s|^#COMPOSE_PROFILES=.*|COMPOSE_PROFILES=local-api|; s|^#BOT_API_URL=|BOT_API_URL=|; \
+                s|^#TELEGRAM_API_ID=.*|TELEGRAM_API_ID=${api_id}|; s|^#TELEGRAM_API_HASH=.*|TELEGRAM_API_HASH=${api_hash}|" .env
+        # A bot must log out of the cloud API before a local server can serve it.
+        curl -fsS "https://api.telegram.org/bot${token}/logOut" >/dev/null || true
+    fi
 fi
 
 $SUDO docker compose up -d --build --remove-orphans

@@ -40,7 +40,6 @@ PERMANENT_ERRORS = (
     "requested format is not available",
     "no video formats found",
     "http error 404",
-    "http error 403: forbidden",
 )
 
 # The site refuses anonymous access from this server's IP - cookies help.
@@ -69,7 +68,7 @@ class Result:
     has_audio: bool
 
 
-def _base_opts(job_dir: Path, cookies: Path | None) -> dict[str, Any]:
+def _base_opts(job_dir: Path, cookies: Path | None, pot_provider_url: str) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "outtmpl": str(job_dir / "%(id).60s.%(ext)s"),
         "paths": {"home": str(job_dir), "temp": str(job_dir)},
@@ -104,6 +103,13 @@ def _base_opts(job_dir: Path, cookies: Path | None) -> dict[str, Any]:
         "concurrent_fragment_downloads": 4,
         "http_chunk_size": 10 * 1024 * 1024,
         "overwrites": False,
+        "extractor_args": {
+            # From datacenter IPs the default YouTube clients are often refused
+            # ("Sign in to confirm you're not a bot") or limited to 360p; mweb
+            # with a PO token from the pot-provider service returns all formats.
+            "youtube": {"player_client": ["default", "mweb"]},
+            "youtubepot-bgutilhttp": {"base_url": [pot_provider_url]},
+        },
     }
     if cookies:
         opts["cookiefile"] = str(cookies)
@@ -131,8 +137,10 @@ def _pick_format(
     below_height excludes qualities already found to be too large.
     """
     heights = [h for h in FALLBACK_HEIGHTS if below_height is None or h < below_height]
+    # When size forces a lower quality, also cap the audio bitrate: a 384 kbit/s
+    # 5.1 track alone can take half of a 50 MB budget.
     candidates = ([BEST_FORMAT] if below_height is None else []) + [
-        f"bv*[height<={h}]+ba/b[height<={h}]" for h in heights
+        f"bv*[height<={h}]+ba[abr<=160]/bv*[height<={h}]+ba/b[height<={h}]" for h in heights
     ]
     for selector in candidates:
         with yt_dlp.YoutubeDL({**opts, "format": selector, "simulate": True}) as ydl:
@@ -182,10 +190,11 @@ def download(
     max_bytes: int,
     attempts: int,
     cookies: Path | None,
+    pot_provider_url: str,
     progress: ProgressCallback,
 ) -> Result:
     job_dir.mkdir(parents=True, exist_ok=True)
-    opts = _base_opts(job_dir, cookies)
+    opts = _base_opts(job_dir, cookies, pot_provider_url)
 
     def on_progress(d: dict[str, Any]) -> None:
         if d.get("status") != "downloading":

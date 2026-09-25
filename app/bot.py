@@ -128,6 +128,7 @@ async def process(message: Message, url: str) -> None:
                 max_bytes=cfg.max_file_bytes,
                 attempts=cfg.download_attempts,
                 cookies=cfg.cookies_file,
+                pot_provider_url=cfg.pot_provider_url,
                 progress=status.from_thread,
             )
             await send_result(message, result, status)

@@ -28,6 +28,7 @@ class Config:
     download_attempts: int
     max_file_bytes: int
     stale_hours: int
+    pot_provider_url: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -50,4 +51,5 @@ class Config:
             download_attempts=max(1, _int("DOWNLOAD_ATTEMPTS", 5)),
             max_file_bytes=_int("MAX_FILE_MB", default_limit) * 1024 * 1024,
             stale_hours=max(1, _int("STALE_HOURS", 24)),
+            pot_provider_url=os.getenv("POT_PROVIDER_URL", "http://pot-provider:4416").strip(),
         )
