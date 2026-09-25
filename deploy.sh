@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploys or updates the bot on a fresh Ubuntu/Debian/Oracle Linux VPS.
 #   curl -fsSL https://raw.githubusercontent.com/anvarkhamidov/adurgerbot.github.io/claude/telegram-video-downloader-bot-00mq5d/deploy.sh | bash
+#   bash ~/video-bot/deploy.sh --local-api   # (re)configure the local Bot API server
 # The script does not touch the firewall or SSH: the bot uses outbound
 # connections only (long polling) and needs no open ports.
 set -euo pipefail
@@ -8,6 +9,14 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-https://github.com/anvarkhamidov/adurgerbot.github.io.git}"
 BRANCH="${BRANCH:-claude/telegram-video-downloader-bot-00mq5d}"
 APP_DIR="${APP_DIR:-$HOME/video-bot}"
+
+ASK_LOCAL_API=0
+for arg in "$@"; do
+    case "$arg" in
+        --local-api) ASK_LOCAL_API=1 ;;
+        *) echo "Unknown option: $arg" >&2; exit 1 ;;
+    esac
+done
 
 SUDO=""
 [ "$(id -u)" -eq 0 ] || SUDO="sudo"
@@ -26,13 +35,19 @@ fi
 command -v git >/dev/null 2>&1 || { $SUDO apt-get update && $SUDO apt-get install -y git; } \
     || $SUDO dnf install -y git
 
-if [ -d "$APP_DIR/.git" ]; then
-    git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
-    git -C "$APP_DIR" reset --hard FETCH_HEAD
-else
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+if [ -z "${DEPLOY_REEXECED:-}" ]; then
+    if [ -d "$APP_DIR/.git" ]; then
+        git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
+        git -C "$APP_DIR" reset --hard FETCH_HEAD
+    else
+        git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+    fi
+    # This process may be an older copy (a cached raw.githubusercontent.com
+    # file or the previous checkout): continue with the version just pulled.
+    DEPLOY_REEXECED=1 exec bash "$APP_DIR/deploy.sh" "$@"
 fi
 cd "$APP_DIR"
+echo "deploy.sh from commit $(git rev-parse --short HEAD)"
 
 # Sets KEY=VALUE in .env, replacing an existing (or commented-out) line.
 set_env() {
@@ -55,7 +70,7 @@ if [ ! -f .env ]; then
 fi
 
 # Asked on every run until enabled, so an existing install can switch too.
-if [ -z "$(get_env BOT_API_URL)" ] && [ "${SKIP_LOCAL_API:-0}" != "1" ]; then
+if [ "$ASK_LOCAL_API" = "1" ] || { [ -z "$(get_env BOT_API_URL)" ] && [ "${SKIP_LOCAL_API:-0}" != "1" ]; }; then
     echo
     echo "The cloud Bot API accepts files up to 50 MB only (a 10-minute video fits at ~480p)."
     echo "A local Bot API server lifts the limit to 2000 MB. It needs api_id and api_hash"
@@ -79,6 +94,12 @@ if [ -z "$(get_env BOT_API_URL)" ] && [ "${SKIP_LOCAL_API:-0}" != "1" ]; then
             echo "logOut failed (already logged out?) - continuing."
         fi
     fi
+fi
+
+if [ -n "$(get_env BOT_API_URL)" ]; then
+    echo "Local Bot API: enabled ($(get_env BOT_API_URL)), upload limit 2000 MB"
+else
+    echo "Local Bot API: disabled, upload limit 50 MB (enable: bash $APP_DIR/deploy.sh --local-api)"
 fi
 
 $SUDO docker compose up -d --build --remove-orphans
