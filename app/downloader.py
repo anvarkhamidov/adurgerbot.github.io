@@ -6,9 +6,7 @@ URL - resumes from the existing .part files instead of starting over.
 """
 
 import copy
-import json
 import logging
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +14,8 @@ from typing import Any, Callable
 
 import yt_dlp
 from yt_dlp.utils import DownloadError as YtDlpDownloadError
+
+import media
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class Result:
     width: int | None
     height: int | None
     has_audio: bool
+    thumbnail: Path | None
 
 
 def _base_opts(job_dir: Path, cookies: Path | None, pot_provider_url: str) -> dict[str, Any]:
@@ -158,18 +159,6 @@ def _pick_format(
     raise TooLarge("even the lowest quality exceeds the Telegram upload limit")
 
 
-def _has_audio(path: Path) -> bool:
-    try:
-        out = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_streams", "-of", "json", str(path)],
-            capture_output=True, text=True, timeout=60, check=True,
-        ).stdout
-        return any(s.get("codec_type") == "audio" for s in json.loads(out)["streams"])
-    except Exception:
-        log.exception("ffprobe failed for %s", path)
-        return True
-
-
 def _is_permanent(err: Exception) -> bool:
     msg = str(err).lower()
     return any(marker in msg for marker in PERMANENT_ERRORS + AUTH_ERRORS)
@@ -237,6 +226,13 @@ def download(
             if not path or not path.is_file():
                 raise DownloadFailed("yt-dlp finished without producing a file")
 
+            video = media.probe(path)
+            if video.needs_normalize:
+                progress("📐 Привожу пропорции к исходным (поворот/пиксели)…")
+                log.info("normalizing %s: rotation=%s sar=%s", path, video.rotation, video.sar)
+                media.normalize(path)
+                video = media.probe(path)
+
             size = path.stat().st_size
             if size > max_bytes:
                 # The site gave no usable size estimate: step down in quality.
@@ -248,13 +244,15 @@ def download(
                 progress(f"📉 {height}p весит {_fmt_bytes(size)} — больше лимита, беру качество ниже…")
                 continue
 
+            # Dimensions come from the final file, not from site metadata.
             return Result(
                 path=path,
                 title=info.get("title") or path.stem,
-                duration=int(info["duration"]) if info.get("duration") else None,
-                width=info.get("width"),
-                height=info.get("height"),
-                has_audio=_has_audio(path),
+                duration=video.duration or (int(info["duration"]) if info.get("duration") else None),
+                width=video.width,
+                height=video.height,
+                has_audio=video.has_audio,
+                thumbnail=media.thumbnail(path, video),
             )
         except TooLarge:
             raise

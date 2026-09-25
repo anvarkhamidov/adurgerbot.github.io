@@ -92,6 +92,7 @@ async def send_result(message: Message, result: Result, status: StatusMessage) -
                 duration=result.duration,
                 width=result.width,
                 height=result.height,
+                thumbnail=FSInputFile(result.thumbnail) if result.thumbnail else None,
                 supports_streaming=True,
                 request_timeout=UPLOAD_TIMEOUT,
             )
@@ -104,6 +105,7 @@ async def send_result(message: Message, result: Result, status: StatusMessage) -
             await message.answer_document(
                 FSInputFile(result.path, filename=f"{result.path.stem}.mp4"),
                 caption=caption,
+                thumbnail=FSInputFile(result.thumbnail) if result.thumbnail else None,
                 request_timeout=UPLOAD_TIMEOUT,
             )
             return
