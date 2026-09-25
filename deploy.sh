@@ -34,22 +34,50 @@ else
 fi
 cd "$APP_DIR"
 
+# Sets KEY=VALUE in .env, replacing an existing (or commented-out) line.
+set_env() {
+    local key="$1" value="$2"
+    if grep -qE "^#?${key}=" .env; then
+        sed -i "s|^#\?${key}=.*|${key}=${value}|" .env
+    else
+        printf '%s=%s\n' "$key" "$value" >> .env
+    fi
+}
+get_env() { sed -n "s/^$1=//p" .env | tail -n 1; }
+
 if [ ! -f .env ]; then
     cp .env.example .env
     chmod 600 .env
     read -r -s -p "BOT_TOKEN from @BotFather: " token < /dev/tty; echo
     read -r -p "Allowed Telegram user IDs, comma-separated (empty = everyone): " users < /dev/tty
-    sed -i "s|^BOT_TOKEN=.*|BOT_TOKEN=${token}|; s|^ALLOWED_USERS=.*|ALLOWED_USERS=${users}|" .env
+    set_env BOT_TOKEN "$token"
+    set_env ALLOWED_USERS "$users"
+fi
 
+# Asked on every run until enabled, so an existing install can switch too.
+if [ -z "$(get_env BOT_API_URL)" ] && [ "${SKIP_LOCAL_API:-0}" != "1" ]; then
+    echo
     echo "The cloud Bot API accepts files up to 50 MB only (a 10-minute video fits at ~480p)."
-    echo "With api_id/api_hash from https://my.telegram.org a local Bot API server lifts it to 2000 MB."
+    echo "A local Bot API server lifts the limit to 2000 MB. It needs api_id and api_hash"
+    echo "from https://my.telegram.org -> API development tools."
     read -r -p "TELEGRAM_API_ID (empty = keep the 50 MB limit): " api_id < /dev/tty
     if [ -n "$api_id" ]; then
+        if ! [[ "$api_id" =~ ^[0-9]+$ ]]; then
+            echo "api_id must be a number" >&2
+            exit 1
+        fi
         read -r -s -p "TELEGRAM_API_HASH: " api_hash < /dev/tty; echo
-        sed -i "s|^#COMPOSE_PROFILES=.*|COMPOSE_PROFILES=local-api|; s|^#BOT_API_URL=|BOT_API_URL=|; \
-                s|^#TELEGRAM_API_ID=.*|TELEGRAM_API_ID=${api_id}|; s|^#TELEGRAM_API_HASH=.*|TELEGRAM_API_HASH=${api_hash}|" .env
-        # A bot must log out of the cloud API before a local server can serve it.
-        curl -fsS "https://api.telegram.org/bot${token}/logOut" >/dev/null || true
+        set_env TELEGRAM_API_ID "$api_id"
+        set_env TELEGRAM_API_HASH "$api_hash"
+        set_env COMPOSE_PROFILES local-api
+        set_env BOT_API_URL http://telegram-bot-api:8081
+        # A bot must log out of the cloud API before a local server can serve it
+        # (afterwards the cloud API refuses it for ~10 minutes).
+        if curl -fsS "https://api.telegram.org/bot$(get_env BOT_TOKEN)/logOut" >/dev/null; then
+            echo "Bot logged out of the cloud Bot API."
+        else
+            echo "logOut failed (already logged out?) - continuing."
+        fi
     fi
 fi
 
