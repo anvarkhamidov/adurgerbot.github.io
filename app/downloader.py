@@ -227,6 +227,9 @@ def download(
                 raise DownloadFailed("yt-dlp finished without producing a file")
 
             video = media.probe(path)
+            log.info("%s: site says %sx%s, file is %sx%s (rotation=%s, sar=%s)",
+                     path.name, info.get("width"), info.get("height"),
+                     video.width, video.height, video.rotation, video.sar)
             if video.needs_normalize:
                 progress("📐 Привожу пропорции к исходным (поворот/пиксели)…")
                 log.info("normalizing %s: rotation=%s sar=%s", path, video.rotation, video.sar)
